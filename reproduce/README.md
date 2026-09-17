@@ -70,6 +70,20 @@ Out: one Excel per (condition × replicate) with `metadata`/`per_barcode`/`per_v
 (Replicate QC/selection → `*_ONOFF_QC_final.xlsx`, then feature computation → `*_Final_6.xlsx`,
 are the intervening steps that produce the model-input tables.)
 
+**How `Average ON/OFF` is computed.** `count_barcodes.py` outputs, per variant, a
+`mean_norm_ratio` (ssDNA ÷ plasmid) for each condition × biological replicate. The sensor
+activity used by the model and all figures is then formed as:
+
+- **ON/OFF for biological replicate *i*** = (that ON replicate's `mean_norm_ratio`) ÷
+  (the **mean `mean_norm_ratio` across the OFF replicates** — a shared OFF denominator).
+- **`Average ON/OFF`** = the mean of ON/OFF across the three biological replicates.
+
+Before averaging, per-variant technical-replicate outliers are removed with a
+concordance-fold / Dixon's-Q filter. This ON/OFF/QC step is applied per library between the
+counting above and the deposited `*_Final_6.xlsx` tables; those tables (which already carry
+`Average ON/OFF`) are the entry point for Stage B, and the raw reads and processed values are
+deposited (SRA `PRJNA1529981`; Supplementary Tables) so the pipeline is verifiable end to end.
+
 ### Stage B — model & figures (all take `--input_dir <six _Final_6.xlsx>`)
 
 | Script | Figure | Command | Key output |
