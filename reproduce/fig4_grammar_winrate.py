@@ -16,35 +16,27 @@ This is a purely empirical, model-free readout (no training). It reproduces Fig 
 (WWS 0.69, SWS 0.65 ... SSW 0.33) and the panel-f grammar (weak bp2 > strong bp2;
 within weak-bp2, strong bp3 > weak bp3).
 
-Input : six *_..._Final_6.xlsx (columns b3_grammar, Average_ON/OFF); non-Zika control row dropped.
+Input : Supplementary Table 3 (--supp_table3) [primary], or the legacy *_Final_6.xlsx (columns b3_grammar, Average_ON/OFF); non-Zika control row dropped.
 Output: <out_prefix>_winrate.csv  (per-motif P_win, per transcript + mean),
         prints the panel-d table and the weak/strong-bp2 summary.
 Requirements: numpy, pandas, scipy, openpyxl.
 """
 import argparse, glob, os, re
+import destar_io
 import numpy as np, pandas as pd
 from scipy.stats import rankdata
 
-LIBS = ["T5", "T7", "Dengue", "ENO1", "PGK1", "Zika"]
-PAP = {"T5": "gp8", "T7": "gp10A", "Dengue": "DENV", "ENO1": "ENO1", "PGK1": "PGK1", "Zika": "ZIKV"}
 MOTIFS = ["WWS", "SWS", "SWW", "WWW", "WSS", "WSW", "SSS", "SSW"]  # bp1-bp2-bp3
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--input_dir", default=".")
-    ap.add_argument("--pattern", default="*_target_search_library_analysis_features.recomputed.with_pU.curated_txrel_Final_6.xlsx")
+    destar_io.add_input_args(ap)
     ap.add_argument("--out_prefix", default="fig4_grammar")
     args = ap.parse_args()
 
     pw = {m: {} for m in MOTIFS}   # motif -> {transcript: P_win}
-    for f in glob.glob(os.path.join(args.input_dir, args.pattern)):
-        lib = next((l for l in LIBS if os.path.basename(f).startswith(l + "_")), None)
-        if lib is None:
-            continue
-        d = pd.read_excel(f, sheet_name="Sheet1", engine="openpyxl")
-        if lib != "Zika":
-            d = d.iloc[:-1]  # drop appended control
+    for tx, d in destar_io.load_transcripts(args.supp_table3, args.input_dir).items():
         a = pd.to_numeric(d["Average_ON/OFF"], errors="coerce").values.astype(float)
         motif = d["b3_grammar"].astype(str).values
         ok = np.isfinite(a)
@@ -54,7 +46,7 @@ def main():
         for m in MOTIFS:
             sel = motif == m
             if sel.sum() > 0:
-                pw[m][PAP[lib]] = float(p_win_variant[sel].mean())
+                pw[m][tx] = float(p_win_variant[sel].mean())
 
     txs = sorted({t for m in MOTIFS for t in pw[m]})
     rows = []

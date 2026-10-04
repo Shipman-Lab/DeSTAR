@@ -39,13 +39,18 @@ pip install numpy pandas scipy openpyxl scikit-learn xgboost shap ViennaRNA==2.7
 
 - **Raw reads:** deposited on NCBI SRA, BioProject `PRJNA1529981`;
   72 samples, one merged FASTQ per (library × ON/OFF × replicate × RT-DNA/plasmid).
-- **Per-library feature tables** (model input), one per transcript:
-  `<LIB>_target_search_library_analysis_features.recomputed.with_pU.curated_txrel_Final_6.xlsx`
-  (columns include `Toehold_seq`, `target_33nt`, `Average_ON/OFF`, the 20 model features).
-  LIB ∈ {T5 (gp8), T7 (gp10A), Dengue (DENV), ENO1, PGK1, Zika (ZIKV)}.
-- Non-Zika tables have an appended control row (a Zika-trigger construct) that every script drops.
+- **Model-input table (primary):** **Supplementary Table 3** of the paper — one deposited
+  workbook, sheet `Supplementary Table 3`, 7,383 rows (all six transcripts). Columns include
+  `transcript` (paper names: gp8, gp10A, DENV, ZIKV, PGK1, ENO1), `variant_id`,
+  `target_start_0based`, `target_33nt`, `Toehold_seq`, `Average_ON/OFF`, `ON/OFF_1..3`, and the
+  20 model features. Controls are already excluded and rows are ordered by `variant_id`.
+  → **pass `--supp_table3 <path/to/DeSTAR_Supplementary_Table_1-6.xlsx>`** to every Stage-B script.
+- **Legacy (equivalent):** the six per-transcript tables
+  `<LIB>_..._curated_txrel_Final_6.xlsx` (LIB ∈ {T5, T7, Dengue, ENO1, PGK1, Zika}); non-Zika
+  tables carry an appended control row that the loader drops. Verified row-for-row identical to
+  Supplementary Table 3. → pass `--input_dir <folder>` instead of `--supp_table3`.
 
-Set `--input_dir` to the folder holding the six `*_Final_6.xlsx` files.
+All Stage-B scripts accept either input via the shared loader (`destar_io.py` / `fig3.load_df_map`).
 
 ---
 
@@ -84,17 +89,28 @@ counting above and the deposited `*_Final_6.xlsx` tables; those tables (which al
 `Average ON/OFF`) are the entry point for Stage B, and the raw reads and processed values are
 deposited (SRA `PRJNA1529981`; Supplementary Tables) so the pipeline is verifiable end to end.
 
-### Stage B — model & figures (all take `--input_dir <six _Final_6.xlsx>`)
+### Stage B — model & figures
+
+All Stage-B scripts take `--supp_table3 SUPP` (Supplementary Table 3 workbook; shown as `SUPP`
+below) — or the legacy `--input_dir DATA`.
 
 | Script | Figure | Command | Key output |
 |---|---|---|---|
-| `fig3_pairwise_LOTO.py` | **Fig 3** | `python fig3_pairwise_LOTO.py --input_dir DATA --seeds 0-9` | `*.all_seed_predictions.csv`, `*.avg_predictions.csv` |
-| `fig4_grammar_winrate.py` | **Fig 4d/f** | `python fig4_grammar_winrate.py --input_dir DATA` | `*_winrate.csv` |
-| `fig4_ablation.py` | **Fig 4b/c, ED4c** | `python fig4_ablation.py --input_dir DATA --seeds 0-9` | `*_alone_and_removed.csv` |
-| `fig4_shap.py` | **Fig 4a, ED4b** | `python fig4_shap.py --input_dir DATA --seeds 0-9` | `*_per_feature.csv`, `*_group_rollup.csv` |
-| `fig2_sequence_logo.py` | **Fig 2c** | `python fig2_sequence_logo.py --input_dir DATA --plot` | `*_data.xlsx` (+ `.svg/.png`) |
-| `fig2_heatmap.py` | **Fig 2b** | `python fig2_heatmap.py --input_dir DATA --plot` | `*_data.xlsx` (+ `.svg/.png`) |
-| `ed5_pairing.py` | **ED5b/c** | `python ed5_pairing.py --input_dir DATA` | `*_summary.csv`, `*_perTranscript.csv`, `*_perSensor.csv` |
+| `ed1_single_nt.py` | **ED1** (single-nt sensitivity) | `python ed1_single_nt.py --supp_table3 SUPP --plot` | `*_panelAF_traces.csv`, `*_panelG_boxdata.csv`, `*_panelG_stats.csv` |
+| `fig2_heatmap.py` | **Fig 2b** | `python fig2_heatmap.py --supp_table3 SUPP --plot` | `*_data.xlsx` (+ `.svg/.png`) |
+| `fig2_sequence_logo.py` | **Fig 2c** | `python fig2_sequence_logo.py --supp_table3 SUPP --plot` | `*_data.xlsx` (+ `.svg/.png`) |
+| `fig3_pairwise_LOTO.py` | **Fig 3** | `python fig3_pairwise_LOTO.py --supp_table3 SUPP --seeds 0-9` | `*.all_seed_predictions.csv`, `*.avg_predictions.csv` |
+| `fig4_grammar_winrate.py` | **Fig 4d/f** | `python fig4_grammar_winrate.py --supp_table3 SUPP` | `*_winrate.csv` |
+| `fig4_shap.py` | **Fig 4a, ED5b** | `python fig4_shap.py --supp_table3 SUPP --seeds 0-9` | `*_per_feature.csv`, `*_group_rollup.csv` |
+| `fig4_ablation.py` | **Fig 4b/c, ED5c** | `python fig4_ablation.py --supp_table3 SUPP --seeds 0-9` | `*_per_transcript.csv`, `*_summary.csv`, `*_stats.csv` |
+| `ed6_pairing.py` | **ED6b/c** | `python ed6_pairing.py --supp_table3 SUPP` | `*_summary.csv`, `*_perTranscript.csv`, `*_perSensor.csv` |
+| `ed6d_bp1_encoding.py` | **ED6d** | `python ed6d_bp1_encoding.py --supp_table3 SUPP --seeds 0-9` | `*_per_transcript.csv`, `*_stats.csv` |
+
+> **Aggregation = Method B.** The pairwise-ranking precision scripts (`fig3_pairwise_LOTO.py`,
+> `fig4_ablation.py`, `ed6d_bp1_encoding.py`) aggregate over the 10 seeds the way the deployed model
+> does: each candidate's score is **averaged over seeds into one consensus ranking per transcript**,
+> and precision@k is computed **once** on that ranking (not per-seed-then-averaged). This matches
+> `DeSTAR/destar_rank.py` and the Fig 3 `avg_predictions.csv`.
 
 `--seeds` defaults to `0,1,2,3,4,5,6,7,8,9` (the 10-seed runs). The pairwise LOTO scripts are
 compute-heavy (10 seeds × 6 held-out transcripts); a single `--seeds 0` run is a fast sanity check.
@@ -112,9 +128,12 @@ Each script was checked against the original run outputs:
 | Script | Check |
 |---|---|
 | `count_barcodes.py` | per-barcode raw counts **identical**; ssDNA/plasmid ratio Pearson **r = 1.000000** |
+| Supp Table 3 loader | model input **byte-identical** to the six `*_Final_6.xlsx` (features + target, row-for-row) |
+| `ed1_single_nt.py` | ED1g sign test: adjacent > noise in **5/6** transcripts (gp8/gp10A/ZIKV/PGK1 ****, ENO1 ***), **DENV ns**; pooled P ≈ 10⁻³³ (all 6) / 10⁻⁹⁰ (excl. DENV) |
 | `fig3_pairwise_LOTO.py` | reproduces `baseline_final_model` predictions, per-variant **r = 0.995** (residual = XGB `n_jobs` threading) |
 | `fig4_grammar_winrate.py` | matches Fig 4d **exactly** (WWS 0.683 … SSW 0.331) |
-| `fig4_ablation.py` | full-20 P@5/10/15 = 0.87/0.78/0.70 (Fig 4) |
-| `fig4_shap.py` | per-class fractions & per-feature ranking match Fig 4a/ED4b |
+| `fig4_ablation.py` | **Method B**: full-20 P@5/10/15 = 0.87/0.77/0.69; bottom-stem removed ΔP@10 = −0.58 across 6/6 transcripts (Wilcoxon P = 0.031); bottom-stem alone P@10 = 0.30 |
+| `fig4_shap.py` | per-class fractions & per-feature ranking match Fig 4a/ED5b |
 | `fig2_sequence_logo.py` | pooled K = round(0.15·N) = **1,107** top/bottom |
-| `ed5_pairing.py` | ED5c **exact**: bp1 17.4%/ΔG 0.96±0.03, bp2 1.5%/ΔG 2.57±0.04 (ViennaRNA 2.7.0) |
+| `ed6_pairing.py` | ED6c **exact**: bp1 17.4%/ΔG 0.96±0.03, bp2 1.5%/ΔG 2.57±0.04 (ViennaRNA 2.7.0) |
+| `ed6d_bp1_encoding.py` | **Method B**: adding bp1 identity (pyrimidine/purine or full base) does not improve held-out ranking — all ΔP@k **ns** (ED6d) |

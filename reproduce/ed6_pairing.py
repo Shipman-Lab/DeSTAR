@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ed5_pairing.py — Extended Data Fig. 5b,c: OFF-state stem base-pairing of the DeSTAR
+ed6_pairing.py — Extended Data Fig. 6b,c: OFF-state stem base-pairing of the DeSTAR
 toehold switch, computed with ViennaRNA in two states:
 
   (1) "switch alone"  — the free 59-nt switch RNA (Toehold_seq), no target.
@@ -13,7 +13,7 @@ probability P_close; P_open = 1 - P_close; effective ΔG to open = -RT*ln(P_open
 RT = 0.61633 kcal/mol at 37 C. Stem pair bp_k = switch nt (25+k) paired with nt (60-k)
 in 1-based numbering, i.e. bp1 = (26,59).
 
-METHOD (exact — this reproduces the published ED5 values):
+METHOD (exact — this reproduces the published ED6 values):
   switch alone :  fc = RNA.fold_compound(sw);  fc.pf();  bpp = fc.bpp()
                   P_close(bp_k) = bpp[25+k][60-k]
   target bound :  fc = RNA.fold_compound(sw + "&" + tg)          # ViennaRNA cofold
@@ -32,30 +32,25 @@ Requirements (PIN for reproducibility)
                                              # interior pairs are version-robust.
     pandas, numpy, openpyxl
 
-Input : six *_..._Final_6.xlsx per-library tables (Toehold_seq, target_33nt,
+Input : Supplementary Table 3 (--supp_table3) [primary], or the legacy *_Final_6.xlsx per-library tables (Toehold_seq, target_33nt,
         Average_ON/OFF). The last appended control row of each non-Zika file is dropped.
 
 Outputs
 -------
-    ed5_pairing_perSensor.csv   one row/sensor: switchalone_P1..P8, targetbound_P1..P8
-    ed5_pairing_perTranscript.csv  per-transcript mean P_close per bp, both states (panel b)
-    ed5_pairing_summary.csv     per-bp P_close/P_open/ΔG ± SEM, both states (panel c)
+    ed6_pairing_perSensor.csv   one row/sensor: switchalone_P1..P8, targetbound_P1..P8
+    ed6_pairing_perTranscript.csv  per-transcript mean P_close per bp, both states (panel b)
+    ed6_pairing_summary.csv     per-bp P_close/P_open/ΔG ± SEM, both states (panel c)
 
-Published ED5 values reproduced (ViennaRNA 2.7.0, n = 7,383):
+Published ED6 values reproduced (ViennaRNA 2.7.0, n = 7,383):
     switch alone  bp1 ~25% open
     target bound  bp1 17.4% open / ΔG 0.96 ± 0.03 ;  bp2 1.5% open / ΔG 2.57 ± 0.04
 """
 import argparse, glob, os, re, time
+import destar_io
 import numpy as np, pandas as pd
 import RNA
 
 RT = 0.61633  # kcal/mol at 37 C
-PAP = {"T5": "gp8", "T7": "gp10A", "Dengue": "DENV", "ENO1": "ENO1", "PGK1": "PGK1", "Zika": "ZIKV"}
-PATTERN = "*_target_search_library_analysis_features.recomputed.with_pU.curated_txrel_Final_6.xlsx"
-
-
-def library_of(path):
-    return re.split(r"_target", os.path.basename(path))[0]
 
 
 def switch_alone_Pclose(sw):
@@ -84,22 +79,14 @@ def target_bound_Pclose(sw, tg):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--input_dir", default=".")
-    ap.add_argument("--out_prefix", default="ed5_pairing")
+    destar_io.add_input_args(ap)
+    ap.add_argument("--out_prefix", default="ed6_pairing")
     args = ap.parse_args()
 
     RNA.cvar.temperature = 37.0
-    files = sorted(glob.glob(os.path.join(args.input_dir, PATTERN)))
-    if not files:
-        raise SystemExit(f"No input files matching {PATTERN} in {args.input_dir}")
-
     rows = []
     t0 = time.time()
-    for f in files:
-        lib = library_of(f)
-        df = pd.read_excel(f, sheet_name="Sheet1", engine="openpyxl")
-        if lib.lower() != "zika":
-            df = df.iloc[:-1]  # drop appended Zika-trigger control (last row)
+    for tx, df in destar_io.load_transcripts(args.supp_table3, args.input_dir).items():
         for _, r in df.iterrows():
             sw = str(r["Toehold_seq"]).upper().replace("T", "U")
             tg = str(r["target_33nt"]).upper().replace("T", "U")
@@ -109,12 +96,12 @@ def main():
                 continue
             sa = switch_alone_Pclose(sw)
             tb = target_bound_Pclose(sw, tg)
-            rec = {"transcript": PAP.get(lib, lib), "variant_id": r.get("variant_id", "")}
+            rec = {"transcript": tx, "variant_id": r.get("variant_id", "")}
             for k in range(8):
                 rec[f"switchalone_P{k+1}"] = sa[k]
                 rec[f"targetbound_P{k+1}"] = tb[k]
             rows.append(rec)
-        print(f"  {lib}: {len(rows)} cumulative  {time.time()-t0:.0f}s", flush=True)
+        print(f"  {tx}: {len(rows)} cumulative  {time.time()-t0:.0f}s", flush=True)
 
     d = pd.DataFrame(rows)
     d.to_csv(f"{args.out_prefix}_perSensor.csv", index=False)
@@ -151,7 +138,7 @@ def main():
     summ = summarize("switchalone") + summarize("targetbound")
     pd.DataFrame(summ).to_csv(f"{args.out_prefix}_summary.csv", index=False)
 
-    print(f"\nED5 pairing (ViennaRNA {RNA.__version__}, n = {n} sensors, {len(txs)} transcripts):")
+    print(f"\nED6 pairing (ViennaRNA {RNA.__version__}, n = {n} sensors, {len(txs)} transcripts):")
     for state, label in [("targetbound", "TARGET BOUND (panel c)"), ("switchalone", "switch alone")]:
         print(f"\n  {label}")
         for s in [x for x in summ if x["state"] == state][:3]:

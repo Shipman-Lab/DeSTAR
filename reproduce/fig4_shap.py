@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fig4_shap.py — Figure 4a and Extended Data Fig 4b: feature attribution (TreeSHAP).
+fig4_shap.py — Figure 4a and Extended Data Fig. 5b: feature attribution (TreeSHAP).
 
 The DeSTAR ranker is trained on pairwise feature DIFFERENCES (feature_i - feature_j), so SHAP
 values quantify how each feature *difference* contributes to P(i > j). For each leave-one-
@@ -8,12 +8,12 @@ transcript-out fold (train on 5 libraries) and seed, this script rebuilds the pa
 matrix with the exact Fig 3 model machinery (imported from fig3_pairwise_LOTO.py), fits the same
 XGBoost pipeline, runs shap.TreeExplainer on a stratified sample of the pairwise rows, and takes
 mean |SHAP| per feature. Importances are averaged across folds/seeds, normalized to a fraction of
-the total (ED4b per-feature), and summed within the five feature classes (Fig 4a per-class).
+the total (ED5b per-feature), and summed within the five feature classes (Fig 4a per-class).
 
 Reproduces: Fig 4a per-class fractions (stem 0.42, folding ΔG 0.22, GC 0.16, accessibility 0.11,
-position 0.10) and ED4b(i) per-feature ranking (Hairpin ΔG largest single feature, then WWS ...).
+position 0.10) and ED5b(i) per-feature ranking (Hairpin ΔG largest single feature, then WWS ...).
 
-Input : six *_..._Final_6.xlsx in --input_dir (same as fig3_pairwise_LOTO.py).
+Input : Supplementary Table 3 (--supp_table3) [primary], or the legacy *_Final_6.xlsx in --input_dir (same as fig3_pairwise_LOTO.py).
 Output: <out_prefix>_per_feature.csv, <out_prefix>_group_rollup.csv.
 Requirements: numpy, pandas, scikit-learn, xgboost, shap, openpyxl, fig3_pairwise_LOTO.py on path.
 """
@@ -58,20 +58,17 @@ def stratified_sample(X, y, max_rows, seed):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--input_dir", default=".")
+    ap.add_argument("--supp_table3", default=None,
+                    help="Path to the deposited Supplementary Table workbook (sheet 'Supplementary Table 3'). Primary input.")
+    ap.add_argument("--input_dir", default=None, help="(legacy) folder holding the six *_Final_6.xlsx tables")
     ap.add_argument("--seeds", default="0,1,2,3,4,5,6,7,8,9")
     ap.add_argument("--out_prefix", default="fig4_shap")
     args = ap.parse_args()
     seeds = [int(s) for s in args.seeds.split(",")]
 
-    df_map = {}
-    for f in glob.glob(os.path.join(args.input_dir, "*_target_search_library_analysis_features.recomputed.with_pU.curated_txrel_Final_6.xlsx")):
-        lib = next((l for l in M.LIBS if os.path.basename(f).startswith(l + "_")), None)
-        if lib is None: continue
-        d = pd.read_excel(f, sheet_name="Sheet1", engine="openpyxl")
-        if lib in M.EXCLUDE_CONTROL_LAST_ROW: d = d.iloc[:-1].reset_index(drop=True)
-        df_map[lib] = d
-    libs = [l for l in M.LIBS if l in df_map]
+    df_map = M.load_df_map(supp_table3=args.supp_table3, input_dir=args.input_dir)
+    libs = list(df_map.keys())
+    assert len(libs) == 6, f"expected 6 libraries, found {libs}"
     feats = M.FINAL_FEATURES
 
     acc = {f: [] for f in feats}   # per feature: list of mean|SHAP| across folds/seeds
@@ -104,7 +101,7 @@ def main():
 
     print("\nFig 4a — per-class SHAP fraction:")
     print(roll.to_string(index=False))
-    print("\nED4b(i) — top per-feature:")
+    print("\nED5b(i) — top per-feature:")
     print(per[["feature", "shap_frac_of_total"]].head(5).to_string(index=False))
     print(f"\nwrote {args.out_prefix}_per_feature.csv, {args.out_prefix}_group_rollup.csv")
 

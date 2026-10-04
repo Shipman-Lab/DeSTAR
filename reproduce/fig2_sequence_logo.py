@@ -17,16 +17,15 @@ differences across transcripts do not bias the frequencies.
 
 Reproduces Fig 2c with pooled K = round(0.15 * 7,383) = 1,107 top and 1,107 bottom.
 
-Input : six *_..._Final_6.xlsx (Toehold_seq, Average_ON/OFF); non-Zika control row dropped.
+Input : Supplementary Table 3 (--supp_table3) [primary], or the legacy *_Final_6.xlsx (Toehold_seq, Average_ON/OFF); non-Zika control row dropped.
 Output: <out_prefix>_data.xlsx (enrichment matrix per position x base; 'pooled' + per-transcript
         sheets). If logomaker + matplotlib are available, also <out_prefix>.svg/.png.
 Requirements: numpy, pandas, openpyxl; (optional) logomaker, matplotlib.
 """
 import argparse, glob, os
+import destar_io
 import numpy as np, pandas as pd
 
-LIBS = ["T5", "T7", "Dengue", "ENO1", "PGK1", "Zika"]
-PAP = {"T5": "gp8", "T7": "gp10A", "Dengue": "DENV", "ENO1": "ENO1", "PGK1": "PGK1", "Zika": "ZIKV"}
 BASES = list("ACGU")
 TOPQ = 0.15
 PSEUDO = 0.5
@@ -59,22 +58,15 @@ def enrichment_df(top, bot):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--input_dir", default=".")
-    ap.add_argument("--pattern", default="*_target_search_library_analysis_features.recomputed.with_pU.curated_txrel_Final_6.xlsx")
+    destar_io.add_input_args(ap)
     ap.add_argument("--out_prefix", default="fig2_logo")
     ap.add_argument("--plot", action="store_true", help="also draw logomaker figures if available")
     args = ap.parse_args()
 
     per_tx, pooled_top, pooled_bot = {}, [], []
-    for f in glob.glob(os.path.join(args.input_dir, args.pattern)):
-        lib = next((l for l in LIBS if os.path.basename(f).startswith(l + "_")), None)
-        if lib is None:
-            continue
-        d = pd.read_excel(f, sheet_name="Sheet1", engine="openpyxl")
-        if lib != "Zika":
-            d = d.iloc[:-1]
+    for tx, d in destar_io.load_transcripts(args.supp_table3, args.input_dir).items():
         top, bot, K, N = top_bottom(d)
-        per_tx[PAP[lib]] = (enrichment_df(top, bot), K, N)
+        per_tx[tx] = (enrichment_df(top, bot), K, N)
         pooled_top += list(top); pooled_bot += list(bot)  # top/bottom-K per transcript, pooled
 
     pooled = enrichment_df(pooled_top, pooled_bot)

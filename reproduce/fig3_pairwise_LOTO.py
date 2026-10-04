@@ -23,7 +23,7 @@ top_focus_frac 0.125, top_focus_prob 0.95, top_focus_mode one_in_top, nested_fra
 zone weights elite-strong 2.5 / elite-border 2.0 / strong-border 1.2. Seeds 0-9. The baseline
 seed offset (seed + 12000) is preserved so results match the original run exactly.
 
-Input : six *_..._curated_txrel_Final_6.xlsx tables (target col "Average_ON/OFF"; the 20 model
+Input : Supplementary Table 3 (--supp_table3) [primary], or the legacy *_Final_6.xlsx tables (target col "Average_ON/OFF"; the 20 model
         features present). Non-Zika libraries have an appended control row that is dropped.
 Output: <out_prefix>.all_seed_predictions.csv       (per seed x transcript x variant)
         <out_prefix>.avg_predictions.csv            (averaged over seeds: avg_pred_score/rank)
@@ -45,6 +45,38 @@ except Exception:
 LIBS = ["T5", "T7", "Dengue", "ENO1", "PGK1", "Zika"]
 EXCLUDE_CONTROL_LAST_ROW = {"T5", "T7", "Dengue", "ENO1", "PGK1"}  # Zika keeps all rows
 TARGET_COL = "Average_ON/OFF"
+
+# Supplementary Table 3 (one deposited file) is the primary model input. Its `transcript` column
+# uses paper names; map them to the internal library order used for per-library pair seeds.
+PAPER_TO_LIB = {"gp8": "T5", "gp10A": "T7", "DENV": "Dengue", "ZIKV": "Zika", "PGK1": "PGK1", "ENO1": "ENO1"}
+SUPP_SHEET = "Supplementary Table 3"
+DEFAULT_PATTERN = "*_target_search_library_analysis_features.recomputed.with_pU.curated_txrel_Final_6.xlsx"
+
+def load_df_map(supp_table3=None, input_dir=None, pattern=DEFAULT_PATTERN, sheet=SUPP_SHEET):
+    """Load the six per-transcript tables as {internal_lib: df}, in LIBS order.
+
+    Primary input: Supplementary Table 3 (`--supp_table3`), the publicly deposited table whose
+    `transcript` column holds paper names; controls are already excluded, and rows are ordered by
+    variant_id (identical to the legacy *_Final_6.xlsx tables, verified row-for-row).
+    Fallback (legacy): six *_Final_6.xlsx tables globbed from `input_dir` (control row dropped)."""
+    import glob as _glob, os as _os
+    df_map = {}
+    if supp_table3:
+        st = pd.read_excel(supp_table3, sheet_name=sheet, engine="openpyxl")
+        for paper, lib in PAPER_TO_LIB.items():
+            d = st[st["transcript"] == paper].reset_index(drop=True)
+            if len(d):
+                df_map[lib] = d
+    else:
+        for f in _glob.glob(_os.path.join(input_dir or ".", pattern)):
+            lib = next((l for l in LIBS if _os.path.basename(f).startswith(l + "_")), None)
+            if lib is None:
+                continue
+            d = pd.read_excel(f, sheet_name="Sheet1", engine="openpyxl")
+            if lib in EXCLUDE_CONTROL_LAST_ROW:
+                d = d.iloc[:-1].reset_index(drop=True)
+            df_map[lib] = d
+    return {l: df_map[l] for l in LIBS if l in df_map}
 
 # Resolved final 20 features (raw ΔG swapped in for the _pct_in_tx ΔG, as in the original run's config)
 FINAL_FEATURES = [
@@ -215,22 +247,17 @@ def score_unseen(model, X_test, chunk=256):
 # ---------------------------------------------------------------- main LOTO
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--input_dir", default=".")
-    ap.add_argument("--pattern", default="*_target_search_library_analysis_features.recomputed.with_pU.curated_txrel_Final_6.xlsx")
+    ap.add_argument("--supp_table3", default=None,
+                    help="Path to the deposited Supplementary Table workbook (sheet 'Supplementary Table 3'). Primary input.")
+    ap.add_argument("--input_dir", default=None, help="(legacy) folder holding the six *_Final_6.xlsx tables")
+    ap.add_argument("--pattern", default=DEFAULT_PATTERN)
     ap.add_argument("--seeds", default="0,1,2,3,4,5,6,7,8,9")
     ap.add_argument("--out_prefix", default="fig3_pairwise_LOTO")
     args = ap.parse_args()
     seeds = [int(s) for s in args.seeds.split(",")]
 
-    # load the six libraries, drop appended control row for non-Zika
-    df_map = {}
-    for f in glob.glob(os.path.join(args.input_dir, args.pattern)):
-        lib = next((l for l in LIBS if os.path.basename(f).startswith(l + "_")), None)
-        if lib is None: continue
-        d = pd.read_excel(f, sheet_name="Sheet1", engine="openpyxl")
-        if lib in EXCLUDE_CONTROL_LAST_ROW: d = d.iloc[:-1].reset_index(drop=True)
-        df_map[lib] = d
-    libs = [l for l in LIBS if l in df_map]
+    df_map = load_df_map(supp_table3=args.supp_table3, input_dir=args.input_dir, pattern=args.pattern)
+    libs = list(df_map.keys())
     assert len(libs) == 6, f"expected 6 libraries, found {libs}"
 
     rows = []

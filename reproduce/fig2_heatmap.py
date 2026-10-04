@@ -7,43 +7,35 @@ by its position along the transcript (target_start_0based). Values are clipped t
 for the color scale (as in the figure); the exported data keep the unclipped values too.
 This is a direct visualization of the measured data — no model.
 
-Input : six *_..._Final_6.xlsx (Average_ON/OFF, target_start_0based); non-Zika control dropped.
+Input : Supplementary Table 3 (--supp_table3) [primary], or the legacy *_Final_6.xlsx (Average_ON/OFF, target_start_0based); non-Zika control dropped.
 Output: <out_prefix>_data.xlsx (one sheet per transcript: target_start, log2_ON_OFF, clipped).
         With --plot (and matplotlib), <out_prefix>.svg/.png — one horizontal heatmap strip
         per transcript, common color scale.
 Requirements: numpy, pandas, openpyxl; (optional) matplotlib.
 """
 import argparse, glob, os
+import destar_io
 import numpy as np, pandas as pd
 
-LIBS = ["T5", "T7", "Dengue", "ENO1", "PGK1", "Zika"]
-PAP = {"T5": "gp8", "T7": "gp10A", "Dengue": "DENV", "ENO1": "ENO1", "PGK1": "PGK1", "Zika": "ZIKV"}
 CLIP = 1.5
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--input_dir", default=".")
-    ap.add_argument("--pattern", default="*_target_search_library_analysis_features.recomputed.with_pU.curated_txrel_Final_6.xlsx")
+    destar_io.add_input_args(ap)
     ap.add_argument("--out_prefix", default="fig2_heatmap")
     ap.add_argument("--plot", action="store_true")
     args = ap.parse_args()
 
     per_tx = {}
-    for f in glob.glob(os.path.join(args.input_dir, args.pattern)):
-        lib = next((l for l in LIBS if os.path.basename(f).startswith(l + "_")), None)
-        if lib is None:
-            continue
-        d = pd.read_excel(f, sheet_name="Sheet1", engine="openpyxl")
-        if lib != "Zika":
-            d = d.iloc[:-1]
+    for tx, d in destar_io.load_transcripts(args.supp_table3, args.input_dir).items():
         s = pd.to_numeric(d["target_start_0based"], errors="coerce")
         y = np.log2(pd.to_numeric(d["Average_ON/OFF"], errors="coerce").astype(float))
         t = pd.DataFrame({"target_start_0based": s, "log2_ON_OFF": y}).dropna().sort_values("target_start_0based")
         t["clipped"] = t["log2_ON_OFF"].clip(-CLIP, CLIP)
-        per_tx[PAP[lib]] = t.reset_index(drop=True)
+        per_tx[tx] = t.reset_index(drop=True)
 
-    order = [PAP[l] for l in LIBS if PAP[l] in per_tx]
+    order = [p for p in destar_io.PAPER_LIBS if p in per_tx]
     with pd.ExcelWriter(f"{args.out_prefix}_data.xlsx", engine="openpyxl") as xw:
         for t in order:
             per_tx[t].round(4).to_excel(xw, sheet_name=t[:28], index=False)
